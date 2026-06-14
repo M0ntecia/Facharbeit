@@ -1,0 +1,122 @@
+[
+  {
+    "number": 1,
+    "transition": {
+      "type": "fade"
+    },
+    "animationTargets": [
+      "Wie Schule wirkt:",
+      "Seminarfachkurs Glück"
+    ]
+  },
+  {
+    "number": 2,
+    "transition": {
+      "type": "zoom"
+    },
+    "animationTargets": [
+      "Schule prägt den Alltag",
+      "Inwiefern beeinflussen strukturelle Unterschiede"
+    ]
+  },
+  {
+    "number": 3,
+    "transition": {
+      "type": "wipe"
+    },
+    "animationTargets": [
+      "Strukturmerkmale",
+      "Wohlbefinden",
+      "Bildungsgerechtigkeit"
+    ]
+  },
+  {
+    "number": 4,
+    "transition": {
+      "type": "cover"
+    },
+    "animationTargets": [
+      "Gymnasium",
+      "Realschule",
+      "Hauptschule",
+      "Gesamtschule",
+      "Berufliche Schulen"
+    ]
+  },
+  {
+    "number": 5,
+    "transition": {
+      "type": "circle"
+    },
+    "animationTargets": [
+      "Noten",
+      "Stress",
+      "Leistungsdruck kann Motivation fördern"
+    ]
+  },
+  {
+    "number": 6,
+    "transition": {
+      "type": "push"
+    },
+    "animationTargets": [
+      "Lehrer-Schüler-Verhältnis",
+      "Mitbestimmung",
+      "Feedbackkultur"
+    ]
+  },
+  {
+    "number": 7,
+    "transition": {
+      "type": "dissolve"
+    },
+    "animationTargets": [
+      "Was beeinflusst euer Wohlbefinden",
+      "Alle Faktoren spielen laut Facharbeit"
+    ]
+  },
+  {
+    "number": 8,
+    "transition": {
+      "type": "plus"
+    },
+    "animationTargets": [
+      "Deutschland",
+      "Finnland",
+      "Angelsächsische Systeme",
+      "Kein System ist perfekt."
+    ]
+  },
+  {
+    "number": 9,
+    "transition": {
+      "type": "split"
+    },
+    "animationTargets": [
+      "Stärken",
+      "Schwächen"
+    ]
+  },
+  {
+    "number": 10,
+    "transition": {
+      "type": "wheel"
+    },
+    "animationTargets": [
+      "Mehr Lebenskompetenzen",
+      "Spätere Leistungsdifferenzierung",
+      "Alternative Bewertungsformen"
+    ]
+  },
+  {
+    "number": 11,
+    "transition": {
+      "type": "fade"
+    },
+    "animationTargets": [
+      "Schule beeinflusst mehr als nur Noten.",
+      "Strukturen wirken auf das Wohlbefinden.",
+      "Danke für eure Aufmerksamkeit!"
+    ]
+  }
+]

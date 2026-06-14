@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1400" height="900" viewBox="0 0 1400 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1400" height="900" rx="36" fill="#FFFFFF"/>
+  <circle cx="235" cy="190" r="118" fill="#CFEFFF"/>
+  <circle cx="1160" cy="170" r="96" fill="#FFF7C7"/>
+  <circle cx="1120" cy="718" r="150" fill="#FFD9E8"/>
+  <rect x="460" y="230" width="470" height="210" rx="28" fill="#F7FBFE" stroke="#E8EDF2" stroke-width="8"/>
+  <line x1="530" y1="306" x2="860" y2="306" stroke="#CFEFFF" stroke-width="16" stroke-linecap="round"/>
+  <line x1="530" y1="356" x2="778" y2="356" stroke="#FFD9E8" stroke-width="16" stroke-linecap="round"/>
+  <circle cx="420" cy="570" r="70" fill="#CFEFFF"/>
+  <rect x="380" y="636" width="84" height="152" rx="34" fill="#3A3D46" opacity="0.82"/>
+  <line x1="404" y1="678" x2="348" y2="754" stroke="#3A3D46" stroke-width="18" stroke-linecap="round"/>
+  <line x1="440" y1="678" x2="518" y2="744" stroke="#3A3D46" stroke-width="18" stroke-linecap="round"/>
+  <line x1="402" y1="784" x2="372" y2="842" stroke="#3A3D46" stroke-width="18" stroke-linecap="round"/>
+  <line x1="440" y1="784" x2="472" y2="842" stroke="#3A3D46" stroke-width="18" stroke-linecap="round"/>
+  <circle cx="855" cy="592" r="70" fill="#FFD9E8"/>
+  <rect x="812" y="658" width="86" height="152" rx="34" fill="#3A3D46" opacity="0.82"/>
+  <line x1="838" y1="700" x2="772" y2="760" stroke="#3A3D46" stroke-width="18" stroke-linecap="round"/>
+  <line x1="872" y1="700" x2="946" y2="752" stroke="#3A3D46" stroke-width="18" stroke-linecap="round"/>
+  <line x1="834" y1="808" x2="802" y2="864" stroke="#3A3D46" stroke-width="18" stroke-linecap="round"/>
+  <line x1="874" y1="808" x2="908" y2="864" stroke="#3A3D46" stroke-width="18" stroke-linecap="round"/>
+  <path d="M471 588C536 554 598 546 666 556" stroke="#3A3D46" stroke-width="10" stroke-linecap="round" opacity="0.22"/>
+  <path d="M912 602C1002 584 1076 604 1140 654" stroke="#3A3D46" stroke-width="10" stroke-linecap="round" opacity="0.18"/>
+  <rect x="995" y="430" width="150" height="102" rx="26" fill="#FFFFFF" stroke="#E8EDF2" stroke-width="8"/>
+  <circle cx="1043" cy="480" r="10" fill="#CFEFFF"/>
+  <circle cx="1072" cy="480" r="10" fill="#FFD9E8"/>
+  <circle cx="1101" cy="480" r="10" fill="#FFF7C7"/>
+</svg>

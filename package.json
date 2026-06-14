@@ -1,0 +1,24 @@
+{
+  "name": "workspace",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "node src/generate_presentation.mjs && python3 src/postprocess_pptx.py output/Wie_Schule_wirkt_Keynote_Style.pptx output/presentation-metadata.json",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/M0ntecia/Facharbeit.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/M0ntecia/Facharbeit/issues"
+  },
+  "homepage": "https://github.com/M0ntecia/Facharbeit#readme",
+  "dependencies": {
+    "pptxgenjs": "^4.0.1"
+  }
+}
