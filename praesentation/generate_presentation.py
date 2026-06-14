@@ -653,19 +653,43 @@ def text_target(spid, paragraph_idx=None):
     return tgt_el
 
 
-def anim_effect(effect_id, spid, delay, duration=450, paragraph_idx=None, node_type="afterEffect"):
+def anim_scale(effect_id, spid, duration=420):
+    anim = p_el("animScale")
+    c_bhvr = p_el("cBhvr")
+    c_bhvr.append(p_el("cTn", {"id": str(effect_id), "dur": str(duration), "fill": "hold"}))
+    c_bhvr.append(text_target(spid))
+    attr_names = p_el("attrNameLst")
+    attr_x = p_el("attrName")
+    attr_x.text = "ScaleX"
+    attr_y = p_el("attrName")
+    attr_y.text = "ScaleY"
+    attr_names.extend([attr_x, attr_y])
+    c_bhvr.append(attr_names)
+    anim.append(c_bhvr)
+    anim.append(p_el("from", {"x": "96000", "y": "96000"}))
+    anim.append(p_el("to", {"x": "100000", "y": "100000"}))
+    return anim
+
+
+def anim_effect(effect_id, spid, delay, duration=450, paragraph_idx=None, node_type="afterEffect", effect="fade"):
     par = p_el("par")
     ctn = p_el("cTn", {"id": str(effect_id), "fill": "hold", "nodeType": node_type})
     st_cond_lst = p_el("stCondLst")
     st_cond_lst.append(p_el("cond", {"delay": str(delay)}))
     ctn.append(st_cond_lst)
     child_tn_lst = p_el("childTnLst")
-    anim = p_el("animEffect", {"transition": "in", "filter": "fade"})
+
+    filter_name = "wipe(fromLeft)" if effect == "wipe" else "fade"
+    anim = p_el("animEffect", {"transition": "in", "filter": filter_name})
     c_bhvr = p_el("cBhvr")
     c_bhvr.append(p_el("cTn", {"id": str(effect_id + 1), "dur": str(duration), "fill": "hold"}))
     c_bhvr.append(text_target(spid, paragraph_idx))
     anim.append(c_bhvr)
     child_tn_lst.append(anim)
+
+    if effect == "zoom" and paragraph_idx is None:
+        child_tn_lst.append(anim_scale(effect_id + 2, spid, duration=duration))
+
     ctn.append(child_tn_lst)
     par.append(ctn)
     return par
@@ -704,6 +728,7 @@ def build_timing(root, animation_groups):
         for target_idx, target in enumerate(targets):
             spid = target["spid"]
             paragraph_idx = target.get("paragraph")
+            effect = target.get("effect", group.get("effect", "fade"))
             if paragraph_idx is not None:
                 paragraph_build_shapes.add(spid)
             node_type = "afterEffect" if target_idx == 0 else "withEffect"
@@ -715,9 +740,10 @@ def build_timing(root, animation_groups):
                     duration=duration,
                     paragraph_idx=paragraph_idx,
                     node_type=node_type,
+                    effect=effect,
                 )
             )
-            effect_id += 2
+            effect_id += 3
 
     main_ctn.append(child_tn_lst)
     seq.append(main_ctn)
@@ -750,7 +776,7 @@ def groups_from_card_data(shapes, cards, start_delay):
     for title, body, _ in cards:
         targets = group_for_texts(shapes, [title, body])
         if targets:
-            groups.append({"delay": delay, "duration": 430, "targets": targets})
+            groups.append({"delay": delay, "duration": 430, "effect": "zoom", "targets": targets})
             delay += 270
     return groups
 
@@ -759,7 +785,7 @@ def groups_from_paragraphs(root, spid, start_delay, step=230, duration=350):
     groups = []
     delay = start_delay
     for idx in paragraph_indices(root, spid):
-        groups.append({"delay": delay, "duration": duration, "targets": [{"spid": spid, "paragraph": idx}]})
+        groups.append({"delay": delay, "duration": duration, "effect": "wipe", "targets": [{"spid": spid, "paragraph": idx}]})
         delay += step
     return groups
 
@@ -778,7 +804,8 @@ def animation_plan(slide_no, root, data):
         for text in [data["subtitle"], "Facharbeit von Svea Timphus", "Leitfrage, zentrale Ergebnisse und Ausblick"]:
             targets = group_for_texts(shapes, [text])
             if targets:
-                groups.append({"delay": start, "duration": 450, "targets": targets})
+                effect = "wipe" if text == data["subtitle"] else "fade"
+                groups.append({"delay": start, "duration": 450, "effect": effect, "targets": targets})
                 start += 280
         return groups
 
@@ -786,7 +813,7 @@ def animation_plan(slide_no, root, data):
         question = "Handabstimmung: Was beeinflusst euer schulisches Wohlbefinden am stärksten?"
         targets = group_for_texts(shapes, [question])
         if targets:
-            groups.append({"delay": start, "duration": 450, "targets": targets})
+            groups.append({"delay": start, "duration": 450, "effect": "wipe", "targets": targets})
             start += 390
         options = [
             ["A", "Leistungsdruck", "Noten, Prüfungen, Vergleich"],
@@ -797,11 +824,11 @@ def animation_plan(slide_no, root, data):
         for option in options:
             targets = group_for_texts(shapes, option)
             if targets:
-                groups.append({"delay": start, "duration": 360, "targets": targets})
+                groups.append({"delay": start, "duration": 360, "effect": "zoom", "targets": targets})
                 start += 300
         note_targets = group_for_texts(shapes, ["Danach: 2 kurze Stimmen einsammeln und mit den Ergebnissen der Facharbeit verknüpfen."])
         if note_targets:
-            groups.append({"delay": start + 120, "duration": 350, "targets": note_targets})
+            groups.append({"delay": start + 120, "duration": 350, "effect": "fade", "targets": note_targets})
         return groups
 
     if "takeaways" in data:
@@ -813,12 +840,12 @@ def animation_plan(slide_no, root, data):
             ],
         )
         if answer_targets:
-            groups.append({"delay": start, "duration": 500, "targets": answer_targets})
+            groups.append({"delay": start, "duration": 500, "effect": "fade", "targets": answer_targets})
             start += 430
         for takeaway in data["takeaways"]:
             targets = group_for_texts(shapes, [takeaway])
             if targets:
-                groups.append({"delay": start, "duration": 360, "targets": targets})
+                groups.append({"delay": start, "duration": 360, "effect": "wipe", "targets": targets})
                 start += 260
         return groups
 
@@ -829,7 +856,7 @@ def animation_plan(slide_no, root, data):
     if "bullets" in data:
         quote_targets = group_for_texts(shapes, [f"\"{data['quote']}\""])
         if quote_targets:
-            groups.append({"delay": start, "duration": 450, "targets": quote_targets})
+            groups.append({"delay": start, "duration": 450, "effect": "fade", "targets": quote_targets})
             start += 360
         bullet_shape = find_shape(shapes, "\n".join(f"- {bullet}" for bullet in data["bullets"]))
         if bullet_shape:
@@ -840,7 +867,7 @@ def animation_plan(slide_no, root, data):
         for title, body in data["functions"]:
             targets = group_for_texts(shapes, [title, body])
             if targets:
-                groups.append({"delay": start, "duration": 420, "targets": targets})
+                groups.append({"delay": start, "duration": 420, "effect": "zoom", "targets": targets})
                 start += 280
         return groups
 
@@ -858,19 +885,20 @@ def animation_plan(slide_no, root, data):
         for item in sequence:
             targets = group_for_texts(shapes, item)
             if targets:
-                groups.append({"delay": start, "duration": 360, "targets": targets})
+                effect = "wipe" if len(item) == 1 else "zoom"
+                groups.append({"delay": start, "duration": 360, "effect": effect, "targets": targets})
                 start += 230
         return groups
 
     if "mechanisms" in data:
         center_targets = group_for_texts(shapes, ["Leistungsdruck"])
         if center_targets:
-            groups.append({"delay": start, "duration": 420, "targets": center_targets})
+            groups.append({"delay": start, "duration": 420, "effect": "zoom", "targets": center_targets})
             start += 300
         for title, body in data["mechanisms"]:
             targets = group_for_texts(shapes, [title, body])
             if targets:
-                groups.append({"delay": start, "duration": 380, "targets": targets})
+                groups.append({"delay": start, "duration": 380, "effect": "zoom", "targets": targets})
                 start += 260
         return groups
 
@@ -891,7 +919,7 @@ def animation_plan(slide_no, root, data):
         ]:
             heading_targets = group_for_texts(shapes, [heading])
             if heading_targets:
-                groups.append({"delay": start, "duration": 350, "targets": heading_targets})
+                groups.append({"delay": start, "duration": 350, "effect": "fade", "targets": heading_targets})
                 start += 210
             bullet_shape = find_shape(shapes, "\n".join(f"- {bullet}" for bullet in bullets))
             if bullet_shape:
@@ -909,7 +937,7 @@ def animation_plan(slide_no, root, data):
         start += 820
         heading_targets = group_for_texts(shapes, ["Einordnung aus der Facharbeit"])
         if heading_targets:
-            groups.append({"delay": start, "duration": 340, "targets": heading_targets})
+            groups.append({"delay": start, "duration": 340, "effect": "fade", "targets": heading_targets})
             start += 230
         bullets = [
             "Länder mit späterer Leistungsdifferenzierung weisen häufig geringere Leistungsunterschiede zwischen sozialen Gruppen auf.",
@@ -938,7 +966,7 @@ def animation_plan(slide_no, root, data):
         ]:
             heading_targets = group_for_texts(shapes, [heading])
             if heading_targets:
-                groups.append({"delay": start, "duration": 340, "targets": heading_targets})
+                groups.append({"delay": start, "duration": 340, "effect": "fade", "targets": heading_targets})
                 start += 190
             bullet_shape = find_shape(shapes, "\n".join(f"- {bullet}" for bullet in bullets))
             if bullet_shape:
@@ -950,11 +978,11 @@ def animation_plan(slide_no, root, data):
         for title, body in data["reforms"]:
             targets = group_for_texts(shapes, [title, body])
             if targets:
-                groups.append({"delay": start, "duration": 420, "targets": targets})
+                groups.append({"delay": start, "duration": 420, "effect": "zoom", "targets": targets})
                 start += 300
         goal_targets = group_for_texts(shapes, ["Ziel: Bildungsqualität und Schülerwohlbefinden stärker miteinander verbinden."])
         if goal_targets:
-            groups.append({"delay": start + 100, "duration": 380, "targets": goal_targets})
+            groups.append({"delay": start + 100, "duration": 380, "effect": "fade", "targets": goal_targets})
         return groups
 
     return groups
