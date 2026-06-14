@@ -1,0 +1,24 @@
+{
+  "name": "workspace",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "generate:presentation": "node scripts/generate_presentation.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/M0ntecia/Facharbeit.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/M0ntecia/Facharbeit/issues"
+  },
+  "homepage": "https://github.com/M0ntecia/Facharbeit#readme",
+  "dependencies": {
+    "@bapunhansdah/pptxgenjs": "^1.1.3"
+  }
+}
