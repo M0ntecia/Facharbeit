@@ -1,5 +1,7 @@
 from pathlib import Path
+from zipfile import ZIP_DEFLATED, ZipFile
 
+from lxml import etree
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_AUTO_SHAPE_TYPE
@@ -10,6 +12,12 @@ from pptx.util import Inches, Pt
 OUT_DIR = Path(__file__).resolve().parent
 PPTX_PATH = OUT_DIR / "schule_wohlbefinden_praesentation.pptx"
 GUIDE_PATH = OUT_DIR / "sprecherleitfaden_schule_wohlbefinden.md"
+
+P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
+A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
+MC_NS = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+P14_NS = "http://schemas.microsoft.com/office/powerpoint/2010/main"
+NS = {"p": P_NS, "a": A_NS, "mc": MC_NS, "p14": P14_NS}
 
 
 COLORS = {
@@ -550,6 +558,422 @@ def build_presentation():
     add_takeaways_slide(prs, 14, SLIDES[13])
 
     prs.save(PPTX_PATH)
+    apply_motion_to_presentation(PPTX_PATH)
+
+
+def qn(namespace, tag):
+    return f"{{{namespace}}}{tag}"
+
+
+def p_el(tag, attrs=None, children=None):
+    el = etree.Element(qn(P_NS, tag), attrs or {})
+    for child in children or []:
+        el.append(child)
+    return el
+
+
+def shape_text(shape):
+    paragraphs = []
+    for paragraph in shape.xpath(".//a:p", namespaces=NS):
+        text = "".join(t.text or "" for t in paragraph.xpath(".//a:t", namespaces=NS)).strip()
+        if text:
+            paragraphs.append(text)
+    return "\n".join(paragraphs).strip()
+
+
+def slide_shapes(root):
+    shapes = {}
+    for shape in root.xpath(".//p:sp", namespaces=NS):
+        c_nv_pr = shape.find(".//p:cNvPr", namespaces=NS)
+        if c_nv_pr is None:
+            continue
+        text = shape_text(shape)
+        if text:
+            shapes.setdefault(text, []).append(c_nv_pr.get("id"))
+    return shapes
+
+
+def find_shape(shapes, text):
+    matches = shapes.get(text)
+    if matches:
+        return matches[0]
+    for shape_text_value, ids in shapes.items():
+        if shape_text_value.replace("\n", " ") == text:
+            return ids[0]
+    for shape_text_value, ids in shapes.items():
+        if shape_text_value.startswith(text):
+            return ids[0]
+    return None
+
+
+def paragraph_indices(root, spid):
+    shape = root.xpath(f".//p:sp[p:nvSpPr/p:cNvPr[@id='{spid}']]", namespaces=NS)
+    if not shape:
+        return []
+    indices = []
+    for idx, paragraph in enumerate(shape[0].xpath(".//a:p", namespaces=NS)):
+        text = "".join(t.text or "" for t in paragraph.xpath(".//a:t", namespaces=NS)).strip()
+        if text:
+            indices.append(idx)
+    return indices
+
+
+def add_fade_transition(root):
+    for old in root.xpath("./p:transition | ./mc:AlternateContent[.//p:transition]", namespaces=NS):
+        old.getparent().remove(old)
+
+    root.set(qn(MC_NS, "Ignorable"), "p14")
+
+    alternate = etree.Element(qn(MC_NS, "AlternateContent"), nsmap={"mc": MC_NS, "p14": P14_NS})
+    choice = etree.SubElement(alternate, qn(MC_NS, "Choice"), Requires="p14")
+    choice_transition = etree.SubElement(choice, qn(P_NS, "transition"), spd="med")
+    choice_transition.set(qn(P14_NS, "dur"), "700")
+    etree.SubElement(choice_transition, qn(P_NS, "fade"))
+    fallback = etree.SubElement(alternate, qn(MC_NS, "Fallback"))
+    fallback_transition = etree.SubElement(fallback, qn(P_NS, "transition"), spd="med")
+    etree.SubElement(fallback_transition, qn(P_NS, "fade"))
+
+    timing = root.find(qn(P_NS, "timing"))
+    if timing is not None:
+        root.insert(root.index(timing), alternate)
+        return
+    clr_map = root.find(qn(P_NS, "clrMapOvr"))
+    insert_at = root.index(clr_map) + 1 if clr_map is not None else 1
+    root.insert(insert_at, alternate)
+
+
+def text_target(spid, paragraph_idx=None):
+    sp_tgt = p_el("spTgt", {"spid": str(spid)})
+    if paragraph_idx is not None:
+        tx_el = p_el("txEl")
+        tx_el.append(p_el("pRg", {"st": str(paragraph_idx), "end": str(paragraph_idx)}))
+        sp_tgt.append(tx_el)
+    tgt_el = p_el("tgtEl")
+    tgt_el.append(sp_tgt)
+    return tgt_el
+
+
+def anim_effect(effect_id, spid, delay, duration=450, paragraph_idx=None, node_type="afterEffect"):
+    par = p_el("par")
+    ctn = p_el("cTn", {"id": str(effect_id), "fill": "hold", "nodeType": node_type})
+    st_cond_lst = p_el("stCondLst")
+    st_cond_lst.append(p_el("cond", {"delay": str(delay)}))
+    ctn.append(st_cond_lst)
+    child_tn_lst = p_el("childTnLst")
+    anim = p_el("animEffect", {"transition": "in", "filter": "fade"})
+    c_bhvr = p_el("cBhvr")
+    c_bhvr.append(p_el("cTn", {"id": str(effect_id + 1), "dur": str(duration), "fill": "hold"}))
+    c_bhvr.append(text_target(spid, paragraph_idx))
+    anim.append(c_bhvr)
+    child_tn_lst.append(anim)
+    ctn.append(child_tn_lst)
+    par.append(ctn)
+    return par
+
+
+def slide_trigger_conditions(tag):
+    cond_lst = p_el(tag)
+    cond = p_el("cond", {"evt": "onNext" if tag == "nextCondLst" else "onPrev", "delay": "0"})
+    tgt = p_el("tgtEl")
+    tgt.append(p_el("sldTgt"))
+    cond.append(tgt)
+    cond_lst.append(cond)
+    return cond_lst
+
+
+def build_timing(root, animation_groups):
+    timing = root.find(qn(P_NS, "timing"))
+    if timing is not None:
+        root.remove(timing)
+
+    timing = p_el("timing")
+    tn_lst = p_el("tnLst")
+    seq = p_el("seq", {"concurrent": "1", "nextAc": "seek"})
+    main_ctn = p_el("cTn", {"id": "1", "dur": "indefinite", "nodeType": "mainSeq"})
+    st_cond_lst = p_el("stCondLst")
+    st_cond_lst.append(p_el("cond", {"delay": "0"}))
+    main_ctn.append(st_cond_lst)
+    child_tn_lst = p_el("childTnLst")
+
+    effect_id = 2
+    paragraph_build_shapes = set()
+    for group in animation_groups:
+        delay = group["delay"]
+        duration = group.get("duration", 450)
+        targets = group["targets"]
+        for target_idx, target in enumerate(targets):
+            spid = target["spid"]
+            paragraph_idx = target.get("paragraph")
+            if paragraph_idx is not None:
+                paragraph_build_shapes.add(spid)
+            node_type = "afterEffect" if target_idx == 0 else "withEffect"
+            child_tn_lst.append(
+                anim_effect(
+                    effect_id,
+                    spid,
+                    delay=delay,
+                    duration=duration,
+                    paragraph_idx=paragraph_idx,
+                    node_type=node_type,
+                )
+            )
+            effect_id += 2
+
+    main_ctn.append(child_tn_lst)
+    seq.append(main_ctn)
+    seq.append(slide_trigger_conditions("prevCondLst"))
+    seq.append(slide_trigger_conditions("nextCondLst"))
+    tn_lst.append(seq)
+    timing.append(tn_lst)
+
+    if paragraph_build_shapes:
+        bld_lst = p_el("bldLst")
+        for spid in sorted(paragraph_build_shapes, key=int):
+            bld_lst.append(p_el("bldP", {"spid": spid, "grpId": "0", "build": "p"}))
+        timing.append(bld_lst)
+
+    root.append(timing)
+
+
+def group_for_texts(shapes, texts):
+    targets = []
+    for text in texts:
+        spid = find_shape(shapes, text)
+        if spid:
+            targets.append({"spid": spid})
+    return targets
+
+
+def groups_from_card_data(shapes, cards, start_delay):
+    groups = []
+    delay = start_delay
+    for title, body, _ in cards:
+        targets = group_for_texts(shapes, [title, body])
+        if targets:
+            groups.append({"delay": delay, "duration": 430, "targets": targets})
+            delay += 270
+    return groups
+
+
+def groups_from_paragraphs(root, spid, start_delay, step=230, duration=350):
+    groups = []
+    delay = start_delay
+    for idx in paragraph_indices(root, spid):
+        groups.append({"delay": delay, "duration": duration, "targets": [{"spid": spid, "paragraph": idx}]})
+        delay += step
+    return groups
+
+
+def animation_plan(slide_no, root, data):
+    shapes = slide_shapes(root)
+    groups = []
+
+    title_id = find_shape(shapes, data["title"])
+    if title_id:
+        groups.append({"delay": 0, "duration": 500, "targets": [{"spid": title_id}]})
+
+    start = 560
+
+    if slide_no == 1:
+        for text in [data["subtitle"], "Facharbeit von Svea Timphus", "Leitfrage, zentrale Ergebnisse und Ausblick"]:
+            targets = group_for_texts(shapes, [text])
+            if targets:
+                groups.append({"delay": start, "duration": 450, "targets": targets})
+                start += 280
+        return groups
+
+    if data.get("interaction"):
+        question = "Handabstimmung: Was beeinflusst euer schulisches Wohlbefinden am stärksten?"
+        targets = group_for_texts(shapes, [question])
+        if targets:
+            groups.append({"delay": start, "duration": 450, "targets": targets})
+            start += 390
+        options = [
+            ["A", "Leistungsdruck", "Noten, Prüfungen, Vergleich"],
+            ["B", "Beziehung zu Lehrkräften", "Unterstützung, Respekt, Vertrauen"],
+            ["C", "Mitbestimmung", "Meinung zählt, Selbstwirksamkeit"],
+            ["D", "Lebensweltbezug", "Alltag, Beruf, Zukunft"],
+        ]
+        for option in options:
+            targets = group_for_texts(shapes, option)
+            if targets:
+                groups.append({"delay": start, "duration": 360, "targets": targets})
+                start += 300
+        note_targets = group_for_texts(shapes, ["Danach: 2 kurze Stimmen einsammeln und mit den Ergebnissen der Facharbeit verknüpfen."])
+        if note_targets:
+            groups.append({"delay": start + 120, "duration": 350, "targets": note_targets})
+        return groups
+
+    if "takeaways" in data:
+        answer_targets = group_for_texts(
+            shapes,
+            [
+                "Antwort in einem Satz:",
+                "Das Wohlbefinden hängt nicht nur von einzelnen Schülerinnen und Schülern ab, sondern stark von schulischen Strukturen.",
+            ],
+        )
+        if answer_targets:
+            groups.append({"delay": start, "duration": 500, "targets": answer_targets})
+            start += 430
+        for takeaway in data["takeaways"]:
+            targets = group_for_texts(shapes, [takeaway])
+            if targets:
+                groups.append({"delay": start, "duration": 360, "targets": targets})
+                start += 260
+        return groups
+
+    if "cards" in data:
+        groups.extend(groups_from_card_data(shapes, data["cards"], start))
+        return groups
+
+    if "bullets" in data:
+        quote_targets = group_for_texts(shapes, [f"\"{data['quote']}\""])
+        if quote_targets:
+            groups.append({"delay": start, "duration": 450, "targets": quote_targets})
+            start += 360
+        bullet_shape = find_shape(shapes, "\n".join(f"- {bullet}" for bullet in data["bullets"]))
+        if bullet_shape:
+            groups.extend(groups_from_paragraphs(root, bullet_shape, start, step=230, duration=330))
+        return groups
+
+    if "functions" in data:
+        for title, body in data["functions"]:
+            targets = group_for_texts(shapes, [title, body])
+            if targets:
+                groups.append({"delay": start, "duration": 420, "targets": targets})
+                start += 280
+        return groups
+
+    if data.get("flow"):
+        sequence = [
+            ["Grundschule", "gemeinsamer Start"],
+            ["oft nach Klasse 4"],
+            ["Gymnasium", "Abitur, stärker theoretisch, hoher Prüfungsdruck möglich"],
+            ["Realschule", "Mittlerer Abschluss, Verbindung von Allgemeinbildung und Praxis"],
+            ["Hauptschule", "stärker praktisch, teils mit Stigmatisierung verbunden"],
+            ["Gesamtschule", "längeres gemeinsames Lernen, mehrere Abschlüsse"],
+            ["Berufliche Schulen / duale Ausbildung: praktische Ausbildung + schulische Bildung"],
+            ["Kernaussage der Arbeit: Differenzierung kann Förderung ermöglichen, legt Bildungswege aber früh fest."],
+        ]
+        for item in sequence:
+            targets = group_for_texts(shapes, item)
+            if targets:
+                groups.append({"delay": start, "duration": 360, "targets": targets})
+                start += 230
+        return groups
+
+    if "mechanisms" in data:
+        center_targets = group_for_texts(shapes, ["Leistungsdruck"])
+        if center_targets:
+            groups.append({"delay": start, "duration": 420, "targets": center_targets})
+            start += 300
+        for title, body in data["mechanisms"]:
+            targets = group_for_texts(shapes, [title, body])
+            if targets:
+                groups.append({"delay": start, "duration": 380, "targets": targets})
+                start += 260
+        return groups
+
+    if data.get("wellbeing"):
+        for heading, bullets in [
+            ("Belastende Faktoren", [
+                "Prüfungsstress und Erwartungshaltungen",
+                "Vergleichskultur und Konkurrenzdenken",
+                "Angst vor schulischem Versagen",
+                "Schlafprobleme, Kopfschmerzen oder Konzentrationsschwierigkeiten",
+            ]),
+            ("Stärkende Faktoren", [
+                "positives Schulklima",
+                "unterstützende Beziehungen zu Lehrkräften",
+                "Mitbestimmung und Partizipation",
+                "Feedbackkultur statt nur Ergebnisfokus",
+            ]),
+        ]:
+            heading_targets = group_for_texts(shapes, [heading])
+            if heading_targets:
+                groups.append({"delay": start, "duration": 350, "targets": heading_targets})
+                start += 210
+            bullet_shape = find_shape(shapes, "\n".join(f"- {bullet}" for bullet in bullets))
+            if bullet_shape:
+                groups.extend(groups_from_paragraphs(root, bullet_shape, start, step=170, duration=300))
+                start += len(paragraph_indices(root, bullet_shape)) * 170
+        return groups
+
+    if data.get("comparison"):
+        comparison_cards = [
+            ("Deutschland", "Mehrgliedrigkeit, Noten und Prüfungen spielen zentrale Rolle", ""),
+            ("Skandinavische Modelle", "längeres gemeinsames Lernen; Finnland bis zur 9. Klasse", ""),
+            ("Angelsächsische Systeme", "umfassende Gesamtschulen, Wahlmöglichkeiten und Praxisorientierung", ""),
+        ]
+        groups.extend(groups_from_card_data(shapes, comparison_cards, start))
+        start += 820
+        heading_targets = group_for_texts(shapes, ["Einordnung aus der Facharbeit"])
+        if heading_targets:
+            groups.append({"delay": start, "duration": 340, "targets": heading_targets})
+            start += 230
+        bullets = [
+            "Länder mit späterer Leistungsdifferenzierung weisen häufig geringere Leistungsunterschiede zwischen sozialen Gruppen auf.",
+            "Unterstützende Lernumgebungen und weniger Konkurrenzkultur können mit höherer Schülerzufriedenheit verbunden sein.",
+            "Es gibt kein einheitliches perfektes Bildungssystem.",
+        ]
+        bullet_shape = find_shape(shapes, "\n".join(f"- {bullet}" for bullet in bullets))
+        if bullet_shape:
+            groups.extend(groups_from_paragraphs(root, bullet_shape, start, step=210, duration=300))
+        return groups
+
+    if data.get("proscons"):
+        for heading, bullets in [
+            ("Stärken", [
+                "Differenzierung verschiedener Bildungswege",
+                "duales Ausbildungssystem",
+                "relativ niedrige Jugendarbeitslosigkeit laut OECD 2021",
+                "hohe akademische Standards, besonders im Gymnasium",
+            ]),
+            ("Schwächen", [
+                "frühe Aufteilung nach der Grundschule",
+                "starke Kopplung von sozialer Herkunft und Bildungserfolg",
+                "Leistungsdruck durch Noten, Prüfungen und Versetzung",
+                "soziale Segregation zwischen Schulformen möglich",
+            ]),
+        ]:
+            heading_targets = group_for_texts(shapes, [heading])
+            if heading_targets:
+                groups.append({"delay": start, "duration": 340, "targets": heading_targets})
+                start += 190
+            bullet_shape = find_shape(shapes, "\n".join(f"- {bullet}" for bullet in bullets))
+            if bullet_shape:
+                groups.extend(groups_from_paragraphs(root, bullet_shape, start, step=155, duration=290))
+                start += len(paragraph_indices(root, bullet_shape)) * 155
+        return groups
+
+    if "reforms" in data:
+        for title, body in data["reforms"]:
+            targets = group_for_texts(shapes, [title, body])
+            if targets:
+                groups.append({"delay": start, "duration": 420, "targets": targets})
+                start += 300
+        goal_targets = group_for_texts(shapes, ["Ziel: Bildungsqualität und Schülerwohlbefinden stärker miteinander verbinden."])
+        if goal_targets:
+            groups.append({"delay": start + 100, "duration": 380, "targets": goal_targets})
+        return groups
+
+    return groups
+
+
+def apply_motion_to_presentation(pptx_path):
+    tmp_path = pptx_path.with_suffix(".animated.tmp.pptx")
+    with ZipFile(pptx_path, "r") as source, ZipFile(tmp_path, "w", ZIP_DEFLATED) as target:
+        for info in source.infolist():
+            data = source.read(info.filename)
+            if info.filename.startswith("ppt/slides/slide") and info.filename.endswith(".xml"):
+                slide_no = int(info.filename.rsplit("slide", 1)[1].split(".xml", 1)[0])
+                if 1 <= slide_no <= len(SLIDES):
+                    root = etree.fromstring(data)
+                    add_fade_transition(root)
+                    build_timing(root, animation_plan(slide_no, root, SLIDES[slide_no - 1]))
+                    data = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+            target.writestr(info, data)
+    tmp_path.replace(pptx_path)
 
 
 def build_guide():
