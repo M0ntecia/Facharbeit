@@ -1,4 +1,5 @@
 from pathlib import Path
+from shutil import copy2
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from lxml import etree
@@ -11,6 +12,7 @@ from pptx.util import Inches, Pt
 
 OUT_DIR = Path(__file__).resolve().parent
 PPTX_PATH = OUT_DIR / "schule_wohlbefinden_praesentation.pptx"
+KEYNOTE_PPTX_PATH = OUT_DIR / "schule_wohlbefinden_keynote_ipad.pptx"
 GUIDE_PATH = OUT_DIR / "sprecherleitfaden_schule_wohlbefinden.md"
 
 P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
@@ -559,6 +561,8 @@ def build_presentation():
 
     prs.save(PPTX_PATH)
     apply_motion_to_presentation(PPTX_PATH)
+    copy2(PPTX_PATH, KEYNOTE_PPTX_PATH)
+    apply_keynote_safe_transitions(KEYNOTE_PPTX_PATH)
 
 
 def qn(namespace, tag):
@@ -618,7 +622,7 @@ def paragraph_indices(root, spid):
     return indices
 
 
-def add_fade_transition(root):
+def add_transition(root, effect="fade", direction=None):
     for old in root.xpath("./p:transition | ./mc:AlternateContent[.//p:transition]", namespaces=NS):
         old.getparent().remove(old)
 
@@ -628,10 +632,18 @@ def add_fade_transition(root):
     choice = etree.SubElement(alternate, qn(MC_NS, "Choice"), Requires="p14")
     choice_transition = etree.SubElement(choice, qn(P_NS, "transition"), spd="med")
     choice_transition.set(qn(P14_NS, "dur"), "700")
-    etree.SubElement(choice_transition, qn(P_NS, "fade"))
+    if effect == "wipe":
+        attrs = {"dir": direction or "r"}
+        etree.SubElement(choice_transition, qn(P_NS, "wipe"), attrs)
+    else:
+        etree.SubElement(choice_transition, qn(P_NS, "fade"))
     fallback = etree.SubElement(alternate, qn(MC_NS, "Fallback"))
     fallback_transition = etree.SubElement(fallback, qn(P_NS, "transition"), spd="med")
-    etree.SubElement(fallback_transition, qn(P_NS, "fade"))
+    if effect == "wipe":
+        attrs = {"dir": direction or "r"}
+        etree.SubElement(fallback_transition, qn(P_NS, "wipe"), attrs)
+    else:
+        etree.SubElement(fallback_transition, qn(P_NS, "fade"))
 
     timing = root.find(qn(P_NS, "timing"))
     if timing is not None:
@@ -640,6 +652,10 @@ def add_fade_transition(root):
     clr_map = root.find(qn(P_NS, "clrMapOvr"))
     insert_at = root.index(clr_map) + 1 if clr_map is not None else 1
     root.insert(insert_at, alternate)
+
+
+def add_fade_transition(root):
+    add_transition(root, "fade")
 
 
 def text_target(spid, paragraph_idx=None):
@@ -671,24 +687,54 @@ def anim_scale(effect_id, spid, duration=420):
     return anim
 
 
+def set_visible(effect_id, spid, paragraph_idx=None):
+    setter = p_el("set")
+    c_bhvr = p_el("cBhvr")
+    c_bhvr.append(p_el("cTn", {"id": str(effect_id), "dur": "1", "fill": "hold"}))
+    c_bhvr.append(text_target(spid, paragraph_idx))
+    attr_names = p_el("attrNameLst")
+    attr_name = p_el("attrName")
+    attr_name.text = "style.visibility"
+    attr_names.append(attr_name)
+    c_bhvr.append(attr_names)
+    setter.append(c_bhvr)
+    to = p_el("to")
+    to.append(p_el("strVal", {"val": "visible"}))
+    setter.append(to)
+    return setter
+
+
+def entrance_preset(effect):
+    if effect == "wipe":
+        return {"presetID": "2819", "presetClass": "entr", "presetSubtype": "0"}
+    if effect == "zoom":
+        return {"presetID": "22", "presetClass": "entr", "presetSubtype": "0"}
+    return {"presetID": "10", "presetClass": "entr", "presetSubtype": "0"}
+
+
 def anim_effect(effect_id, spid, delay, duration=450, paragraph_idx=None, node_type="afterEffect", effect="fade"):
     par = p_el("par")
-    ctn = p_el("cTn", {"id": str(effect_id), "fill": "hold", "nodeType": node_type})
+    ctn_attrs = {"id": str(effect_id), "fill": "hold", "nodeType": node_type}
+    ctn_attrs.update(entrance_preset(effect))
+    ctn = p_el("cTn", ctn_attrs)
     st_cond_lst = p_el("stCondLst")
     st_cond_lst.append(p_el("cond", {"delay": str(delay)}))
     ctn.append(st_cond_lst)
     child_tn_lst = p_el("childTnLst")
 
-    filter_name = "wipe(fromLeft)" if effect == "wipe" else "fade"
+    # Office documents Wipe with directional values like wipe(right); Keynote is
+    # more likely to import these standard filter names than custom aliases.
+    filter_name = "wipe(right)" if effect == "wipe" else "fade"
+    child_tn_lst.append(set_visible(effect_id + 1, spid, paragraph_idx))
     anim = p_el("animEffect", {"transition": "in", "filter": filter_name})
     c_bhvr = p_el("cBhvr")
-    c_bhvr.append(p_el("cTn", {"id": str(effect_id + 1), "dur": str(duration), "fill": "hold"}))
+    c_bhvr.append(p_el("cTn", {"id": str(effect_id + 2), "dur": str(duration), "fill": "hold"}))
     c_bhvr.append(text_target(spid, paragraph_idx))
     anim.append(c_bhvr)
     child_tn_lst.append(anim)
 
     if effect == "zoom" and paragraph_idx is None:
-        child_tn_lst.append(anim_scale(effect_id + 2, spid, duration=duration))
+        child_tn_lst.append(anim_scale(effect_id + 3, spid, duration=duration))
 
     ctn.append(child_tn_lst)
     par.append(ctn)
@@ -743,7 +789,7 @@ def build_timing(root, animation_groups):
                     effect=effect,
                 )
             )
-            effect_id += 3
+            effect_id += 4
 
     main_ctn.append(child_tn_lst)
     seq.append(main_ctn)
@@ -1004,6 +1050,41 @@ def apply_motion_to_presentation(pptx_path):
     tmp_path.replace(pptx_path)
 
 
+def apply_keynote_safe_transitions(pptx_path):
+    # Keynote on iPad often simplifies imported PowerPoint object builds. This
+    # variant therefore adds visible, conservative slide-level variety using
+    # effects Keynote commonly maps reliably: Fade and Wipe.
+    transition_cycle = [
+        ("fade", None),
+        ("wipe", "r"),
+        ("fade", None),
+        ("wipe", "u"),
+        ("fade", None),
+        ("wipe", "r"),
+        ("fade", None),
+        ("wipe", "d"),
+        ("fade", None),
+        ("wipe", "r"),
+        ("fade", None),
+        ("wipe", "u"),
+        ("fade", None),
+        ("wipe", "r"),
+    ]
+    tmp_path = pptx_path.with_suffix(".keynote.tmp.pptx")
+    with ZipFile(pptx_path, "r") as source, ZipFile(tmp_path, "w", ZIP_DEFLATED) as target:
+        for info in source.infolist():
+            data = source.read(info.filename)
+            if info.filename.startswith("ppt/slides/slide") and info.filename.endswith(".xml"):
+                slide_no = int(info.filename.rsplit("slide", 1)[1].split(".xml", 1)[0])
+                if 1 <= slide_no <= len(transition_cycle):
+                    root = etree.fromstring(data)
+                    effect, direction = transition_cycle[slide_no - 1]
+                    add_transition(root, effect, direction)
+                    data = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+            target.writestr(info, data)
+    tmp_path.replace(pptx_path)
+
+
 def build_guide():
     lines = [
         "# Sprechleitfaden zur Präsentation",
@@ -1053,4 +1134,5 @@ if __name__ == "__main__":
     build_presentation()
     build_guide()
     print(f"Created {PPTX_PATH}")
+    print(f"Created {KEYNOTE_PPTX_PATH}")
     print(f"Created {GUIDE_PATH}")
